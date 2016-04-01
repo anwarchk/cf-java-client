@@ -53,7 +53,7 @@ public interface Services {
      *
      * @return the service instances
      */
-    Flux<ServiceInstance> listInstances();
+    Flux<ServiceInstanceSummary> listInstances();
 
     /**
      * Unbind a service instance from an application

@@ -24,6 +24,7 @@ import lombok.Getter;
 import lombok.Singular;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * The entity response payload for Services
@@ -70,7 +71,7 @@ public final class ServiceEntity {
      * @param extra the extra data
      * @return the extra data
      */
-    private final String extra;
+    private final Map<String, Object> extra;
 
     /**
      * The info url
@@ -178,7 +179,7 @@ public final class ServiceEntity {
                   @JsonProperty("bindable") Boolean bindable,
                   @JsonProperty("description") String description,
                   @JsonProperty("documentation_url") @Deprecated String documentationUrl,
-                  @JsonProperty("extra") String extra,
+                  @JsonProperty("extra") Map<String, Object> extra,
                   @JsonProperty("info_url") @Deprecated String infoUrl,
                   @JsonProperty("label") String label,
                   @JsonProperty("long_description") @Deprecated String longDescription,

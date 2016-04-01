@@ -29,36 +29,36 @@ import java.util.List;
 public final class ServiceInstance {
 
     /**
-     * The bound applications
+     * The dashboard Url
      *
-     * @param applications the bound applications
-     * @return the bound applications
+     * @param dashboard the dashboard
+     * @return the dashboard
      */
-    private final List<String> applications;
+    private final String dashboard; //TODO: String?
 
     /**
-     * The id
+     * The service description
      *
-     * @param id the id
-     * @return the id
+     * @param description the service description
+     * @return the service description
      */
-    private final String id;
+    private final String description;
 
     /**
-     * The last operation
+     * The documentation URL
      *
-     * @param lastOperation the last operation
-     * @return the last operation
+     * @param documentationUrl the documentation URL
+     * @return the documentation URL
      */
-    private final String lastOperation;
+    private final String documentationUrl; //TODO: String?
 
     /**
-     * The name
+     * The message ///TODO: ???
      *
-     * @param name the name
-     * @return the name
+     * @param message the message
+     * @return the message
      */
-    private final String name;
+    private final String message;
 
     /**
      * The managed service plan
@@ -69,26 +69,86 @@ public final class ServiceInstance {
     private final String plan;
 
     /**
-     * The managed service
+     * The service - either the name of the managed service, or an indicator of 'user-provided'
      *
-     * @param service the managed service
-     * @return the managed service
+     * @param service the service
+     * @return the service
      */
     private final String service;
 
+    /**
+     * The service instance
+     *
+     * @param serviceInstance the service instance
+     * @return the service instance
+     */
+    private final String serviceInstance;
+
+    /**
+     * When the service was last started
+     *
+     * @param startedAt the started timestamp
+     * @return the started timestamp
+     */
+    private final String startedAt;
+
+    /**
+     * The status of the last operation
+     *
+     * @param status the status of the last operation
+     * @return the status of the last operation
+     */
+    private final String status;
+
+    /**
+     * The tags for the service
+     *
+     * @param tags the tags for the service
+     * @return the tags for the service
+     */
+    private final List<String> tags;
+
+    /**
+     * The type of the service instance
+     *
+     * @param type the type of the service instance
+     * @return the type of the service instance
+     */
+    private final ServiceInstanceType type;
+
+    /**
+     * When the service was last updated
+     *
+     * @param updatedAt the updated timestamp
+     * @return the updated timestamp
+     */
+    private final String updatedAt;
+
     @Builder
-    ServiceInstance(@Singular List<String> applications,
-                    String id,
-                    String lastOperation,
-                    String name,
+    ServiceInstance(String dashboardUrl,
+                    String description,
+                    String documentationUrl,
+                    String message,
                     String plan,
-                    String service) {
-        this.applications = applications;
-        this.id = id;
-        this.lastOperation = lastOperation;
-        this.name = name;
+                    String service,
+                    String serviceInstance,
+                    String startedAt,
+                    String status,
+                    @Singular List<String> tags,
+                    ServiceInstanceType type,
+                    String updatedAt) {
+        this.dashboard = dashboardUrl;
+        this.description = description;
+        this.documentationUrl = documentationUrl;
+        this.message = message;
         this.plan = plan;
         this.service = service;
+        this.serviceInstance = serviceInstance;
+        this.startedAt = startedAt;
+        this.status = status;
+        this.tags = tags;
+        this.type = type;
+        this.updatedAt = updatedAt;
     }
 
 }

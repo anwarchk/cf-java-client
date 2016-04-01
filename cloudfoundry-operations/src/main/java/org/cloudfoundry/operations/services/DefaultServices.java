@@ -37,6 +37,7 @@ import org.cloudfoundry.client.v2.serviceinstances.ServiceInstanceResource;
 import org.cloudfoundry.client.v2.serviceplans.GetServicePlanRequest;
 import org.cloudfoundry.client.v2.serviceplans.GetServicePlanResponse;
 import org.cloudfoundry.client.v2.serviceplans.ListServicePlansRequest;
+import org.cloudfoundry.client.v2.serviceplans.ServicePlanEntity;
 import org.cloudfoundry.client.v2.serviceplans.ServicePlanResource;
 import org.cloudfoundry.client.v2.services.GetServiceRequest;
 import org.cloudfoundry.client.v2.services.GetServiceResponse;
@@ -56,6 +57,7 @@ import reactor.core.publisher.Mono;
 import reactor.core.tuple.Tuple2;
 
 import java.time.Duration;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -118,14 +120,19 @@ public final class DefaultServices implements Services {
             .then(resource -> Mono
                 .when(
                     Mono.just(resource),
-                    getBoundApplications(this.cloudFoundryClient, ResourceUtils.getId(resource)),
-                    getServiceAndPlan(this.cloudFoundryClient, ResourceUtils.getEntity(resource).getServicePlanId())
+                    getServiceIdAndPlan(this.cloudFoundryClient, ResourceUtils.getEntity(resource).getServicePlanId())
                 ))
+            .then(function((resource, serviceIdAndPlan) -> Mono
+                .when(
+                    Mono.just(resource),
+                    Mono.just(serviceIdAndPlan.t2),
+                    getServiceEntity(this.cloudFoundryClient, serviceIdAndPlan.t1)
+                )))
             .map(function(DefaultServices::toServiceInstance));
     }
 
     @Override
-    public Flux<ServiceInstance> listInstances() {
+    public Flux<ServiceInstanceSummary> listInstances() {
         return this.spaceId
             .flatMap(spaceId -> requestSpaceServiceInstances(this.cloudFoundryClient, spaceId))
             .flatMap(resource -> Mono
@@ -134,7 +141,7 @@ public final class DefaultServices implements Services {
                     getBoundApplications(this.cloudFoundryClient, ResourceUtils.getId(resource)),
                     getServiceAndPlan(this.cloudFoundryClient, ResourceUtils.getEntity(resource).getServicePlanId())
                 ))
-            .map(function(DefaultServices::toServiceInstance));
+            .map(function(DefaultServices::toServiceInstanceSummary));
     }
 
     @Override
@@ -154,6 +161,14 @@ public final class DefaultServices implements Services {
 
     private static String convertLastOperation(LastOperation lastOperation) {
         return String.format("%s %s", lastOperation.getType(), lastOperation.getState());
+    }
+
+    private static ServiceInstanceType convertToInstanceType(String type) {
+        if ("user_provided_service_instance".equals(type)) return ServiceInstanceType.USER_PROVIDED;
+
+        if ("managed_service_instance".equals(type)) return ServiceInstanceType.MANAGED;
+
+        return ServiceInstanceType.UNKNOWN;
     }
 
     private static Mono<AbstractServiceInstanceResource> createServiceInstance(CloudFoundryClient cloudFoundryClient, String spaceId, String planId, CreateServiceInstanceRequest request) {
@@ -211,6 +226,24 @@ public final class DefaultServices implements Services {
             .map(ResourceUtils::getId);
     }
 
+    private static Mono<ServiceEntity> getServiceEntity(CloudFoundryClient cloudFoundryClient, Optional<String> serviceId) {
+        return Mono
+            .justOrEmpty(serviceId)
+            .then(serviceId1 -> requestService(cloudFoundryClient, serviceId1))
+            .log("stream.here")
+            .map(ResourceUtils::getEntity)
+            .otherwiseIfEmpty(Mono.just(ServiceEntity.builder().build()));
+    }
+
+    private static Mono<Tuple2<Optional<String>, Optional<String>>> getServiceIdAndPlan(CloudFoundryClient cloudFoundryClient, String servicePlanId) {
+        return Optional.ofNullable(servicePlanId)
+            .map(servicePlanId1 -> requestServicePlan(cloudFoundryClient, servicePlanId1)
+                .map(ResourceUtils::getEntity)
+                .then(servicePlanEntity -> Mono
+                    .just(Tuple2.of(Optional.of(servicePlanEntity.getServiceId()), Optional.of(servicePlanEntity.getName())))))
+            .orElse(Mono.just(Tuple2.of(Optional.empty(), Optional.empty())));
+    }
+
     private static Mono<String> getServiceIdByName(CloudFoundryClient cloudFoundryClient, String spaceId, String service) {
         return requestSpaceServices(cloudFoundryClient, spaceId, builder -> builder.label(service))
             .single()
@@ -221,13 +254,21 @@ public final class DefaultServices implements Services {
     private static Mono<ServiceInstanceResource> getServiceInstance(CloudFoundryClient cloudFoundryClient, String name, String spaceId) {
         return requestSpaceServiceInstancesByName(cloudFoundryClient, name, spaceId)
             .single()
-            .otherwise(ExceptionUtils.replace(NoSuchElementException.class, () -> ExceptionUtils.illegalArgument("Service %s does not exist", name)));
+            .otherwise(ExceptionUtils.replace(NoSuchElementException.class, () -> ExceptionUtils.illegalArgument("Service instance %s does not exist", name)));
     }
 
     private static Mono<String> getServiceName(CloudFoundryClient cloudFoundryClient, String serviceId) {
         return requestService(cloudFoundryClient, serviceId)
             .map(ResourceUtils::getEntity)
             .map(ServiceEntity::getLabel);
+    }
+
+    private static Mono<ServicePlanEntity> getServicePlanEntity(CloudFoundryClient cloudFoundryClient, String servicePlanId) {
+        return Mono
+            .justOrEmpty(servicePlanId)
+            .then(servicePlanId1 -> requestServicePlan(cloudFoundryClient, servicePlanId1))
+            .map(ResourceUtils::getEntity)
+            .otherwiseIfEmpty(Mono.just(ServicePlanEntity.builder().build()));
     }
 
     private static Mono<String> getServicePlanIdByName(CloudFoundryClient cloudFoundryClient, String serviceId, String plan) {
@@ -385,12 +426,44 @@ public final class DefaultServices implements Services {
                     .build()));
     }
 
-    private static ServiceInstance toServiceInstance(ServiceInstanceResource resource, List<String> applications, Tuple2<Optional<String>, Optional<String>> serviceAndPlan) {
+    private static ServiceInstance toServiceInstance(ServiceInstanceResource resource, Optional<String> plan, ServiceEntity serviceEntity) {
+        String documentationUrl = Optional
+            .ofNullable(Optional
+                .ofNullable(serviceEntity.getExtra())
+                .orElse(Collections.emptyMap())
+                .get("documentationUrl"))
+            .map(object -> (String) object)
+            .orElse(null);
+
+        ServiceInstanceEntity serviceInstanceEntity = resource.getEntity();
+
+        LastOperation lastOperation = Optional
+            .ofNullable(serviceInstanceEntity.getLastOperation())
+            .orElse(LastOperation.builder()
+                .build());
+
+        return ServiceInstance.builder()
+            .dashboardUrl(serviceInstanceEntity.getDashboardUrl())
+            .description(serviceEntity.getDescription())
+            .documentationUrl(documentationUrl)
+            .message(lastOperation.getDescription())
+            .plan(plan.orElse(null))
+            .service(serviceEntity.getLabel())
+            .serviceInstance(serviceInstanceEntity.getName())
+            .startedAt(lastOperation.getCreatedAt())
+            .status(lastOperation.getState())
+            .tags(serviceInstanceEntity.getTags())
+            .type(convertToInstanceType(serviceInstanceEntity.getType()))
+            .updatedAt(lastOperation.getUpdatedAt())
+            .build();
+    }
+
+    private static ServiceInstanceSummary toServiceInstanceSummary(ServiceInstanceResource resource, List<String> applications, Tuple2<Optional<String>, Optional<String>> serviceAndPlan) {
         ServiceInstanceEntity entity = resource.getEntity();
         Optional<String> service = serviceAndPlan.t1;
         Optional<String> plan = serviceAndPlan.t2;
 
-        return ServiceInstance.builder()
+        return ServiceInstanceSummary.builder()
             .id(ResourceUtils.getId(resource))
             .lastOperation(Optional.ofNullable(entity.getLastOperation()).map(DefaultServices::convertLastOperation).orElse(null))
             .name(entity.getName())
